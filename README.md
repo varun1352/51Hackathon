@@ -288,13 +288,3 @@ python/delivery_area/*
 - **Contributing & Issues:**  
   Feel free to open an issue or a pull request if you have suggestions or bug fixes.
 
-- **License:**  
-  (Add your license information here.)
-
-- **Contact:**  
-  (Add your contact details or repository link for further questions.)
-
----
-
-This README should provide clear guidance on the repository structure, how to set up both the Python and web components, and what files and directories are important for recreating the project.
-
