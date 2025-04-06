@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLY Viewer with Gamepad Support</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px;
+            z-index: 100;
+        }
+        #stats {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .file-input {
+            display: none;
+        }
+        .file-label {
+            padding: 8px 12px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+        #point-size-control {
+            margin-top: 10px;
+        }
+        #gamepad-status {
+            color: #FF5722;
+        }
+        #controls-info {
+            margin-top: 10px;
+            border-top: 1px solid #555;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h1>PLY Viewer with Gamepad Support</h1>
+    </div>
+    <div id="stats">Loading...</div>
+    <div id="controls">
+        <label for="file-input" class="file-label">Load PLY File</label>
+        <input type="file" id="file-input" class="file-input" accept=".ply">
+        <div id="point-size-control">
+            <label for="point-size">Point Size:</label>
+            <input type="range" id="point-size" min="0.1" max="5" step="0.1" value="1">
+            <span id="point-size-value">1.0</span>
+        </div>
+        <div id="gamepad-status">No gamepad detected</div>
+        <div id="controls-info">
+            <strong>Controls:</strong><br>
+            Mouse: Orbit view<br>
+            Left Stick: Move camera<br>
+            Right Stick: Rotate view<br>
+            A/Cross: Reset view<br>
+            B/Circle: Toggle grid
+        </div>
+    </div>
+
+    <!-- Load Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.136.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.136.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <script>
+        // Initialize Three.js components
+        let scene, camera, renderer, controls;
+        let pointCloud;
+        let gridHelper;
+        
+        // Gamepad variables
+        let gamepad = null;
+        let gamepadConnected = false;
+        const moveSpeed = 0.1;
+        const rotateSpeed = 0.03;
+        
+        // Set up the scene
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111111);
+
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Add orbit controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.25;
+            controls.screenSpacePanning = false;
+            controls.maxPolarAngle = Math.PI;
+
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(1, 1, 1).normalize();
+            scene.add(directionalLight);
+
+            // Add grid helper
+            gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Set up file input listener
+            document.getElementById('file-input').addEventListener('change', handleFileSelect, false);
+
+            // Set up point size slider
+            const pointSizeSlider = document.getElementById('point-size');
+            pointSizeSlider.addEventListener('input', function() {
+                if (pointCloud && pointCloud.material) {
+                    pointCloud.material.size = parseFloat(this.value);
+                    document.getElementById('point-size-value').textContent = this.value;
+                }
+            });
+
+            // Display loading message
+            const statsElement = document.getElementById('stats');
+            statsElement.innerHTML = 'Please load a PLY file using the button on the bottom right.';
+            
+            // Set up gamepad
+            setupGamepad();
+
+            // Animation loop
+            animate();
+        }
+        
+        // Set up gamepad support
+        function setupGamepad() {
+            window.addEventListener("gamepadconnected", function(e) {
+                console.log("Gamepad connected:", e.gamepad.id);
+                gamepadConnected = true;
+                document.getElementById('gamepad-status').textContent = 'Gamepad connected: ' + e.gamepad.id;
+                document.getElementById('gamepad-status').style.color = '#4CAF50';
+            });
+            
+            window.addEventListener("gamepaddisconnected", function(e) {
+                console.log("Gamepad disconnected:", e.gamepad.id);
+                gamepadConnected = false;
+                document.getElementById('gamepad-status').textContent = 'Gamepad disconnected';
+                document.getElementById('gamepad-status').style.color = '#FF5722';
+            });
+        }
+        
+        // Update gamepad input
+        function updateGamepad() {
+            if (!gamepadConnected) return;
+            
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            gamepad = gamepads[0]; // Use the first gamepad
+            
+            if (!gamepad) return;
+            
+            // Left stick - move camera
+            const leftX = applyDeadzone(gamepad.axes[0], 0.1);
+            const leftY = applyDeadzone(gamepad.axes[1], 0.1);
+            
+            if (leftX !== 0 || leftY !== 0) {
+                // Move in the direction the camera is facing
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                
+                camera.position.add(forward.multiplyScalar(-leftY * moveSpeed));
+                camera.position.add(right.multiplyScalar(leftX * moveSpeed));
+                
+                controls.update();
+            }
+            
+            // Right stick - rotate camera
+            const rightX = applyDeadzone(gamepad.axes[2], 0.1);
+            const rightY = applyDeadzone(gamepad.axes[3], 0.1);
+            
+            if (rightX !== 0 || rightY !== 0) {
+                controls.rotateLeft(-rightX * rotateSpeed);
+                controls.rotateUp(-rightY * rotateSpeed);
+                controls.update();
+            }
+            
+            // A/Cross button - reset view
+            if (gamepad.buttons[0].pressed) {
+                resetView();
+            }
+            
+            // B/Circle button - toggle grid
+            if (gamepad.buttons[1].pressed && !prevBState) {
+                gridHelper.visible = !gridHelper.visible;
+            }
+            prevBState = gamepad.buttons[1].pressed;
+        }
+        
+        // Apply deadzone to analog sticks
+        function applyDeadzone(value, deadzone) {
+            if (Math.abs(value) < deadzone) {
+                return 0;
+            }
+            return value;
+        }
+        
+        // Reset camera view
+        function resetView() {
+            if (!pointCloud) return;
+            
+            // Center on point cloud
+            const box = new THREE.Box3().setFromObject(pointCloud);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            
+            camera.position.set(center.x, center.y, center.z + maxDim * 2);
+            camera.lookAt(center);
+            controls.target.copy(center);
+            controls.update();
+        }
+        
+        let prevBState = false;
+
+        // Handle file selection
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const statsElement = document.getElementById('stats');
+            statsElement.innerHTML = 'Loading file...';
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    loadPLY(e.target.result);
+                } catch (error) {
+                    console.error("Error during initial load:", error);
+                    statsElement.innerHTML = `Error loading file: ${error.message}`;
+                }
+            };
+            reader.onerror = function() {
+                statsElement.innerHTML = 'Error reading file.';
+            };
+            reader.readAsText(file); // Try to read as text first
+        }
+        
+        // Parse PLY file content
+        function loadPLY(data) {
+            try {
+                // Remove existing point cloud if any
+                if (pointCloud) {
+                    scene.remove(pointCloud);
+                }
+                
+                const statsElement = document.getElementById('stats');
+                const lines = data.split('\n');
+                let format = '';
+                let headerEnd = 0;
+                let vertexCount = 0;
+                let hasColors = false;
+                
+                // Parse header
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (line === 'end_header') {
+                        headerEnd = i + 1;
+                        break;
+                    } else if (line.startsWith('format')) {
+                        format = line.split(' ')[1];
+                    } else if (line.startsWith('element vertex')) {
+                        vertexCount = parseInt(line.split(' ')[2], 10);
+                    } else if (line.startsWith('property') && 
+                              (line.includes('red') || line.includes('r') || 
+                               line.includes('diffuse_red'))) {
+                        hasColors = true;
+                    }
+                }
+                
+                if (format !== 'ascii') {
+                    statsElement.innerHTML = 'Only ASCII PLY files are supported by this viewer.';
+                    return;
+                }
+                
+                if (headerEnd === 0 || vertexCount === 0) {
+                    statsElement.innerHTML = 'Invalid PLY file format.';
+                    return;
+                }
+                
+                // Parse vertices
+                const positions = [];
+                const colors = [];
+                const defaultColor = [0.5, 0.5, 0.5]; // Gray default
+                
+                for (let i = 0; i < vertexCount && (headerEnd + i) < lines.length; i++) {
+                    const line = lines[headerEnd + i].trim();
+                    if (!line) continue;
+                    
+                    const values = line.split(/\s+/);
+                    if (values.length < 3) continue;
+                    
+                    // Add position
+                    positions.push(
+                        parseFloat(values[0]),
+                        parseFloat(values[1]),
+                        parseFloat(values[2])
+                    );
+                    
+                    // Add color if available
+                    if (hasColors && values.length >= 6) {
+                        colors.push(
+                            parseInt(values[3], 10) / 255,
+                            parseInt(values[4], 10) / 255,
+                            parseInt(values[5], 10) / 255
+                        );
+                    } else {
+                        colors.push(...defaultColor);
+                    }
+                }
+                
+                // Create geometry
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                
+                // Create material for point cloud
+                const material = new THREE.PointsMaterial({
+                    size: parseFloat(document.getElementById('point-size').value),
+                    vertexColors: true
+                });
+                
+                // Create point cloud
+                pointCloud = new THREE.Points(geometry, material);
+                
+                // Center the point cloud
+                geometry.computeBoundingBox();
+                const center = new THREE.Vector3();
+                geometry.boundingBox.getCenter(center);
+                pointCloud.position.sub(center);
+                
+                // Add point cloud to scene
+                scene.add(pointCloud);
+                
+                // Update camera position to view the full point cloud
+                const box = new THREE.Box3().setFromObject(pointCloud);
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                camera.position.set(0, 0, maxDim * 2);
+                camera.lookAt(0, 0, 0);
+                
+                // Update stats
+                statsElement.innerHTML = `Points: ${positions.length / 3}<br>
+                                          Bounding Box: <br>
+                                          X: ${size.x.toFixed(2)}, 
+                                          Y: ${size.y.toFixed(2)}, 
+                                          Z: ${size.z.toFixed(2)}`;
+            } catch (error) {
+                console.error('Error parsing PLY file:', error);
+                const statsElement = document.getElementById('stats');
+                statsElement.innerHTML = `Error parsing PLY file: ${error.message}`;
+                
+                if (error.message.includes('split') || error.message.includes('string')) {
+                    statsElement.innerHTML += '<br>File might be in binary format. Try converting to ASCII PLY format.';
+                }
+            }
+        }
+        
+        // Handle window resize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            updateGamepad();
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        // Start the application
+        init();
+    </script>
+</body>
+</html>

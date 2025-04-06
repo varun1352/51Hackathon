@@ -1,0 +1,25 @@
+# Node.js dependencies
+surveillance-system/node_modules/
+surveillance-system/public/output.ply
+
+# Python virtual environments
+venv/
+__pycache__/
+*.py[cod]
+
+# Archives
+*.7z
+
+# Delivery area scans (do not track large scan files)
+python/delivery_area/*
+python/output.ply
+python/output_folder/wall_points.ply
+python/processed.ply
+# If you want to keep an empty folder in the repo, add an empty .gitkeep file inside delivery_area/scan_clean
+!python/delivery_area/scan_clean/.gitkeep
+
+# Logs and temporary files
+*.log
+.DS_Store
+
+surveillance-system.zip

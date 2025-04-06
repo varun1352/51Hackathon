@@ -1,0 +1,37 @@
+# Pipeline Configuration
+
+# Data paths
+paths:
+  input_images_dir: "data/images"
+  output_dir: "output"
+  colmap_dir: "output/colmap"
+  gaussian_dir: "output/gaussian"
+  ply_output_path: "output/gaussian/point_cloud.ply"
+
+# COLMAP settings
+colmap:
+  matcher: "exhaustive"  # Options: exhaustive, sequential, spatial, etc.
+  camera_model: "PINHOLE"  # Options: SIMPLE_PINHOLE, PINHOLE, SIMPLE_RADIAL, etc.
+  camera_params: ""  # Leave empty to estimate or provide initial values
+  gpu_index: 0  # GPU index to use, -1 for CPU
+
+# 3DGS training settings
+gaussian_splatting:
+  iterations: 7000
+  densification_interval: 100
+  opacity_reset_interval: 3000
+  position_lr_init: 0.00016
+  position_lr_final: 0.0000016
+  position_lr_delay_mult: 0.01
+  position_lr_max_steps: 30000
+  scaling_lr: 0.005
+  opacity_lr: 0.05
+  rotation_lr: 0.001
+  densify_grad_threshold: 0.0002
+  densify_from_iter: 500
+  densify_until_iter: 5000
+  random_background: False
+  sh_degree: 3
+  white_background: True
+  densify_grad_threshold: 0.0005
+  percent_dense: 0.01
